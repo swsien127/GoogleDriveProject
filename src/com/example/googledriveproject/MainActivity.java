@@ -154,12 +154,11 @@ public class MainActivity extends Activity {
 								
 								// stores the contents to the device's external storage
 								try {
-								    Log.i("GoogleDriveProject", "beginning storage of file");
-									final java.io.File file = new java.io.File(Environment
-											.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), 
-											tmp.getTitle());
-									showToast("Downloading: " + tmp.getTitle() + " to " + Environment
-											.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS).getPath());
+								  Log.i("GoogleDriveProject", "beginning storage of file");
+									String baseDir = Environment.getExternalStorageDirectory().getAbsolutePath();
+                  java.io.File file = new java.io.File(baseDir + "/" + getString(R.string.local_storage_folder), tmp.getTitle());
+                  showToast("Downloading: " + tmp.getTitle() + " to " + file.getPath());
+                  Log.e("downloadItemFromList", "Downloading: " + tmp.getTitle() + " to " + file.getPath());
 									storeFile(file, inputStream);
 								} finally {
 									inputStream.close();
