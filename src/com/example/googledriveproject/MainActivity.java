@@ -11,6 +11,9 @@ import android.view.View;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
+import java.io.BufferedOutputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -108,7 +111,7 @@ public class MainActivity extends Activity {
                 do {
                     try { 
                         request = f1.list();
-                        request.setQ("trashed=false");
+                        request.setQ("trashed=false and mimeType = 'application/zip'");
                         FileList fileList = request.execute();
                   
                         mResultList.addAll(fileList.getItems());
@@ -151,13 +154,43 @@ public class MainActivity extends Activity {
                                 // stores the contents to the device's external storage
                                 try {
                                     Log.i("GoogleDriveProject", "beginning storage of file");
+                                    byte[] buffer = new byte[2048];
+                                    
+                                    // TODO unzip inputstream here
+                                    ZipInputStream zis = new ZipInputStream(inputStream);
+                                    //get the zipped file list entry
+                                    ZipEntry ze = zis.getNextEntry();
+                                    
+                                    // the LaosTrainingApp directory
                                     String baseDir = Environment.getExternalStorageDirectory().getAbsolutePath();
-                                    java.io.File file = new java.io.File(
-                                            baseDir + "/" + getString(R.string.local_storage_folder), 
-                                            tmp.getTitle());
-                                    showToast("Downloading: " + tmp.getTitle() + " to " + file.getPath());
-                                    Log.e("downloadItemFromList", "Downloading: " + tmp.getTitle() + " to " + file.getPath());
-                                    storeFile(file, inputStream);
+                                    
+                                     int count = 0;
+                                    while (ze != null) {
+                                        count++;
+                                        Log.d("DEBUG", "Extracting: " + ze.getName() + "...");
+                                        // Extracted file will be saved with same file name that's in zipped folder.
+                                        String fileName = ze.getName();
+                                        String filePath = baseDir + "/" + getString(R.string.local_storage_folder) + "/" + fileName;
+                                        java.io.File newFile = new java.io.File(filePath);
+                                        showToast("Downloading: " + newFile.getName() + " to " + newFile.getPath());
+                                        Log.e("downloadItemFromList", "Downloading: " + newFile.getName() + " to " + newFile.getPath());
+	                                    
+                                        String parentPath = newFile.getParent();
+                                        new java.io.File(parentPath).mkdirs();
+                                        System.out.println("making parent directory: " + parentPath);
+	                                    
+                                        FileOutputStream fos = new FileOutputStream(newFile);
+                                        int len;
+                                        while((len = zis.read(buffer)) != -1) {
+                                            fos.write(buffer, 0, len);
+                                        }
+                                        
+                                        //zis.closeEntry();
+                                        ze = zis.getNextEntry();
+                                        //storeFile(newFile, inputStream);
+                                    }
+                                    System.out.println("zipentry count = " + count);
+                                    zis.close();
                                 } finally {
                                     inputStream.close();
                                 }
