@@ -11,6 +11,9 @@ import android.view.View;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
+import java.io.BufferedOutputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -43,56 +46,56 @@ import com.google.api.services.drive.model.FileList;
 
 
 public class MainActivity extends Activity {
-    static final int REQUEST_ACCOUNT_PICKER = 1;
-    static final int REQUEST_AUTHORIZATION = 2;
-    static final int	REQUEST_DOWNLOAD_FILE = 3;
-    static final int RESULT_STORE_FILE = 4;
-    private static Uri mFileUri;
-    private static Drive mService;
+    static final int 				REQUEST_ACCOUNT_PICKER = 1;
+    static final int 				REQUEST_AUTHORIZATION = 2;
+    static final int				REQUEST_DOWNLOAD_FILE = 3;
+    static final int 				RESULT_STORE_FILE = 4;
+    private static Uri 				mFileUri;
+    private static Drive 			mService;
     private GoogleAccountCredential mCredential;
-    private Context mContext;
-    private List<File> mResultList;
-    private ListView mListView;
-    private String[] mFileArray;
-    private String mDLVal;
-    private ArrayAdapter mAdapter;
+    private Context 				mContext;
+    private List<File> 				mResultList;
+    private ListView 				mListView;
+    private String[] 				mFileArray;
+    private String 					mDLVal;
+    private ArrayAdapter 			mAdapter;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-
+    
         // setup for credentials for connecting to the Google Drive account
         mCredential = GoogleAccountCredential.usingOAuth2(this, Arrays.asList(DriveScopes.DRIVE));
-          
+        
         // start activity that prompts the user for their google drive account
         startActivityForResult(mCredential.newChooseAccountIntent(), REQUEST_ACCOUNT_PICKER);
-          
+        
         mContext = getApplicationContext();
-      
+    	
         setContentView(R.layout.activity_main);
         mListView = (ListView) findViewById(R.id.listView1);
-      
-        OnItemClickListener mMessageClickedHandler = new OnItemClickListener() {
-            public void onItemClick(AdapterView parent, View v, int position, long id) {
-                downloadItemFromList(position);
+    	
+    	OnItemClickListener mMessageClickedHandler = new OnItemClickListener() {
+    	    public void onItemClick(AdapterView parent, View v, int position, long id) {
+    	    	downloadItemFromList(position);
+    	    }
+    	};
+    
+    	mListView.setOnItemClickListener(mMessageClickedHandler); 
+    	
+    	final Button button = (Button) findViewById(R.id.button1);
+        button.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+            	final Intent galleryIntent = new Intent(Intent.ACTION_PICK);
+                galleryIntent.setType("*/*");
+                startActivityForResult(galleryIntent, RESULT_STORE_FILE);
             }
-        };
-
-        mListView.setOnItemClickListener(mMessageClickedHandler);
+        });
         
-        final Button button = (Button) findViewById(R.id.button1);
-            button.setOnClickListener(new View.OnClickListener() {
-                public void onClick(View v) {
-                    final Intent galleryIntent = new Intent(Intent.ACTION_PICK);
-                    galleryIntent.setType("*/*");
-                    startActivityForResult(galleryIntent, RESULT_STORE_FILE);
-                }
-            });
-            
         final Button button2 = (Button) findViewById(R.id.button2);
         button2.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
-                getDriveContents();
+            	getDriveContents();
             }
         });
     }
@@ -102,15 +105,20 @@ public class MainActivity extends Activity {
             @Override
             public void run() {
                 mResultList = new ArrayList<File>();
+                //com.google.api.services.drive.Drive.Files f1 = mService.files();
                 Files f1 = mService.files();
+                //com.google.api.services.drive.Drive.Files.List request = null;
                 Files.List request = null;
-          
+		
                 do {
-                    try {
+                    try { 
                         request = f1.list();
-                        request.setQ("trashed=false");
+				
+                        // get only zip files from drive 
+                        request.setQ("trashed=false and mimeType = 'application/zip'");
+                        //com.google.api.services.drive.model.FileList fileList = request.execute();
                         FileList fileList = request.execute();
-                  
+					
                         mResultList.addAll(fileList.getItems());
                         request.setPageToken(fileList.getNextPageToken());
                     } catch (UserRecoverableAuthIOException e) {
@@ -122,7 +130,7 @@ public class MainActivity extends Activity {
                         }
                     }
                 } while (request.getPageToken() !=null && request.getPageToken().length() > 0);
-              
+			
                 populateListView();
             }
         });
@@ -132,7 +140,7 @@ public class MainActivity extends Activity {
     private void downloadItemFromList(int position) {
         mDLVal = (String) mListView.getItemAtPosition(position);
         showToast("You just pressed: " + mDLVal);
-        
+
         Thread t = new Thread(new Runnable() {
             @Override
             public void run() {
@@ -141,27 +149,58 @@ public class MainActivity extends Activity {
                         if (tmp.getDownloadUrl() != null && tmp.getDownloadUrl().length() >0) {
                             try {
                                 Log.i("GoogleDriveProject", "running downloadItemFromList");
-                                com.google.api.client.http.HttpResponse resp =
+                                com.google.api.client.http.HttpResponse resp = 
                                         mService.getRequestFactory()
                                         .buildGetRequest(new GenericUrl(tmp.getDownloadUrl()))
                                         .execute();
-                                // gets the file's contents
+                                // gets the zip file's contents
                                 InputStream inputStream = resp.getContent();
-                  
-                                // stores the contents to the device's external storage
+						
+                                // stores the files in the zip to the device's external storage
                                 try {
                                     Log.i("GoogleDriveProject", "beginning storage of file");
+                                    byte[] buffer = new byte[2048];
+						    
+                                    ZipInputStream zis = new ZipInputStream(inputStream);
+						    
+                                    //get the first entry in the zip file
+                                    ZipEntry ze = zis.getNextEntry();
+					 
+                                    // to /LaosTrainingApp
                                     String baseDir = Environment.getExternalStorageDirectory().getAbsolutePath();
-                                    java.io.File file = new java.io.File(
-                                            baseDir + "/" + getString(R.string.local_storage_folder),
-                                            tmp.getTitle());
-                                    showToast("Downloading: " + tmp.getTitle() + " to " + file.getPath());
-                                    Log.e("downloadItemFromList", "Downloading: " + tmp.getTitle() + " to " + file.getPath());
-                                    storeFile(file, inputStream);
+                                    int count = 0;
+                                    while (ze != null) {
+                                        count++;
+                                        Log.d("DEBUG", "Extracting: " + ze.getName() + "...");
+                                        // Extracted file will be saved with same file name that's in the zip drive
+                                        String fileName = ze.getName();
+                                        String filePath = baseDir + "/" + getString(R.string.local_storage_folder) + "/" + fileName;
+                                        java.io.File newFile = new java.io.File(filePath);
+                                        showToast("Downloading: " + newFile.getName() + " to " + newFile.getPath());
+                                        Log.e("downloadItemFromList", "Downloading: " + newFile.getName() + " to " + newFile.getPath());
+                                
+                                        if (ze.isDirectory()) {
+                                            newFile.mkdirs();
+                                        } else {
+                                            // reads/writes each file 
+                                            FileOutputStream fos = new FileOutputStream(newFile);
+                                            int len;
+                                            while((len = zis.read(buffer)) != -1) {
+                                                fos.write(buffer, 0, len);
+                                            }
+                                            fos.close();
+                                        }
+                                
+                                        //zis.closeEntry();
+                                        ze = zis.getNextEntry();
+                                    }
+                                    System.out.println("zipentry count = " + count);
+                                    zis.close();
+							    
                                 } finally {
                                     inputStream.close();
                                 }
-                  
+							
                             } catch (IOException e) {
                                 e.printStackTrace();
                             }
@@ -183,39 +222,10 @@ public class MainActivity extends Activity {
                     mFileArray[i] = tmp.getTitle();
                     i++;
                 }
-                mAdapter = new ArrayAdapter<String>(mContext,
-                                                    android.R.layout.simple_list_item_1,
-                                                    mFileArray);
-                mListView.setAdapter(mAdapter);
+                mAdapter = new ArrayAdapter<String>(mContext, android.R.layout.simple_list_item_1, mFileArray);
+			    mListView.setAdapter(mAdapter);
             }
         });
-    }
-
-    // stores the downloaded file to device
-    private void storeFile(java.io.File file, InputStream iStream) {
-        try {
-            Log.i("GoogleDriveProject", "get the outputstream");
-            final OutputStream oStream = new FileOutputStream(file);
-            try {
-                try {
-                    final byte[] buffer = new byte[1024];
-                    int read;
-                    while ((read = iStream.read(buffer)) != -1) {
-                        oStream.write(buffer, 0, read);
-                    }
-                    Log.i("GoogleDriveProject", "finished reading outputstream and writing to buffer");
-                    oStream.flush();
-                    Log.i("GoogleDriveProject", "flushing outputstream");
-                } finally {
-                    oStream.close();
-                    Log.i("GoogleDriveProject", "closing outputstream");
-                }
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
     }
 
     @Override
@@ -227,37 +237,37 @@ public class MainActivity extends Activity {
     @Override
     protected void onActivityResult(final int requestCode, final int resultCode, final Intent data) {
         switch (requestCode) {
-            case REQUEST_ACCOUNT_PICKER:
-                if (resultCode == RESULT_OK && data != null && data.getExtras() != null) {
-                    String accountName = data.getStringExtra(AccountManager.KEY_ACCOUNT_NAME);
-                    if (accountName != null) {
-                        mCredential.setSelectedAccountName(accountName);
-                        mService = getDriveService(mCredential);
-                    }
-                }
-                break;
-            case REQUEST_AUTHORIZATION:
-                if (resultCode == Activity.RESULT_OK) {
-                    //account already picked
-                } else {
-                    startActivityForResult(mCredential.newChooseAccountIntent(), REQUEST_ACCOUNT_PICKER);
-                }
-                break;
-            case RESULT_STORE_FILE:
-                mFileUri = data.getData();
-                // Save the file to Google Drive
-                saveFileToDrive();
-                break;
+		    case REQUEST_ACCOUNT_PICKER:
+		        if (resultCode == RESULT_OK && data != null && data.getExtras() != null) {
+		            String accountName = data.getStringExtra(AccountManager.KEY_ACCOUNT_NAME);
+		            if (accountName != null) {
+		                mCredential.setSelectedAccountName(accountName);
+		                mService = getDriveService(mCredential);
+		            }
+		        }
+		        break;
+		    case REQUEST_AUTHORIZATION:
+		        if (resultCode == Activity.RESULT_OK) {
+		            //account already picked
+		        } else {
+		            startActivityForResult(mCredential.newChooseAccountIntent(), REQUEST_ACCOUNT_PICKER);
+		        }
+		        break;
+		    case RESULT_STORE_FILE:
+		        mFileUri = data.getData();
+		        // Save the file to Google Drive
+		        saveFileToDrive();
+		        break;
         }
     }
-    
-    private Drive getDriveService(GoogleAccountCredential credential) {
-        return new Drive.Builder(AndroidHttp.newCompatibleTransport(),
-                                  new GsonFactory(), credential).build();
-      }
 
-    
-    private void saveFileToDrive() {
+    private Drive getDriveService(GoogleAccountCredential credential) {
+        return new Drive.Builder(AndroidHttp.newCompatibleTransport(), new GsonFactory(), credential)
+            .build();
+    }
+
+
+    private void saveFileToDrive()  {
         Thread t = new Thread(new Runnable() {
             @Override
             public void run() {
@@ -266,16 +276,16 @@ public class MainActivity extends Activity {
                     String path;
                     path = getPathFromUri(mFileUri);
                     mFileUri = Uri.fromFile(new java.io.File(path));
-                  
+			
                     ContentResolver cR = MainActivity.this.getContentResolver();
-                  
+			
                     // File's binary content
                     java.io.File fileContent = new java.io.File(mFileUri.getPath());
                     FileContent mediaContent = new FileContent(cR.getType(mFileUri), fileContent);
 
                     showToast("Selected " + mFileUri.getPath() + "to upload");
 
-                    // File's meta data.
+                    // File's meta data. 
                     File body = new File();
                     body.setTitle(fileContent.getName());
                     body.setMimeType(cR.getType(mFileUri));
@@ -283,7 +293,7 @@ public class MainActivity extends Activity {
                     com.google.api.services.drive.Drive.Files f1 = mService.files();
                     com.google.api.services.drive.Drive.Files.Insert i1 = f1.insert(body, mediaContent);
                     File file = i1.execute();
-                  
+			    
                     if (file != null) {
                         showToast("Uploaded: " + file.getTitle());
                     }
@@ -292,9 +302,9 @@ public class MainActivity extends Activity {
                 } catch (IOException e) {
                     e.printStackTrace();
                     showToast("Transfer ERROR: " + e.toString());
-                }
-            }
-        });
+				}
+    		}
+    	});
         t.start();
     }
 
@@ -306,7 +316,7 @@ public class MainActivity extends Activity {
             }
         });
     }
-
+	
     public String getPathFromUri(Uri uri) {
         String[] projection = { MediaStore.Images.Media.DATA };
         Cursor cursor = getContentResolver().query(uri, projection, null, null, null);
